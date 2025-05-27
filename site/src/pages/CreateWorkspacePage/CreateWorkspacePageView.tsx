@@ -47,11 +47,11 @@ import {
 	useValidationSchemaForRichParameters,
 } from "utils/richParameters";
 import * as Yup from "yup";
-import { ExperimentalFormContext } from "./CreateWorkspaceExperimentRouter";
 import type {
 	CreateWorkspaceMode,
 	ExternalAuthPollingState,
 } from "./CreateWorkspacePage";
+import { ExperimentalFormContext } from "./ExperimentalFormContext";
 import { ExternalAuthButton } from "./ExternalAuthButton";
 import type { CreateWorkspacePermissions } from "./permissions";
 
@@ -60,7 +60,7 @@ export const Language = {
 		"Duplicating a workspace only copies its parameters. No state from the old workspace is copied over.",
 } as const;
 
-export interface CreateWorkspacePageViewProps {
+interface CreateWorkspacePageViewProps {
 	mode: CreateWorkspaceMode;
 	defaultName?: string | null;
 	disabledParams?: string[];

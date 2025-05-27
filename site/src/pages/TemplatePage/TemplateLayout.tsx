@@ -5,7 +5,7 @@ import { ErrorAlert } from "components/Alert/ErrorAlert";
 import { Loader } from "components/Loader/Loader";
 import { Margins } from "components/Margins/Margins";
 import { TabLink, Tabs, TabsList } from "components/Tabs/Tabs";
-import { useAuthenticated } from "contexts/auth/RequireAuth";
+import { useAuthenticated } from "hooks";
 import {
 	type WorkspacePermissions,
 	workspacePermissionChecks,
@@ -84,20 +84,23 @@ export const TemplateLayout: FC<PropsWithChildren> = ({
 		queryKey: ["template", templateName],
 		queryFn: () => fetchTemplate(organizationName, templateName),
 	});
-	const workspacePermissionsQuery = useQuery(
-		data
-			? checkAuthorization({
-					checks: workspacePermissionChecks(
-						data.template.organization_id,
-						me.id,
-					),
-				})
-			: { enabled: false },
-	);
+	const workspacePermissionsQuery = useQuery({
+		...checkAuthorization({
+			checks: workspacePermissionChecks(
+				data?.template.organization_id ?? "",
+				me.id,
+			),
+		}),
+		enabled: !!data,
+	});
 
 	const location = useLocation();
 	const paths = location.pathname.split("/");
-	const activeTab = paths.at(-1) === templateName ? "summary" : paths.at(-1)!;
+	const templateNamePath = paths.at(-1);
+	const activeTab =
+		templateNamePath === templateName
+			? "summary"
+			: (templateNamePath as string);
 	// Auditors should also be able to view insights, but do not automatically
 	// have permission to update templates. Need both checks.
 	const shouldShowInsights =
@@ -132,9 +135,6 @@ export const TemplateLayout: FC<PropsWithChildren> = ({
 			<Tabs active={activeTab} className="mb-10 -mt-3">
 				<Margins>
 					<TabsList>
-						<TabLink to="" value="summary">
-							Summary
-						</TabLink>
 						<TabLink to="docs" value="docs">
 							Docs
 						</TabLink>
@@ -143,6 +143,9 @@ export const TemplateLayout: FC<PropsWithChildren> = ({
 								Source Code
 							</TabLink>
 						)}
+						<TabLink to="resources" value="resources">
+							Resources
+						</TabLink>
 						<TabLink to="versions" value="versions">
 							Versions
 						</TabLink>

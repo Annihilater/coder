@@ -7,7 +7,7 @@ import type { FC } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { AppearanceForm } from "./AppearanceForm";
 
-export const AppearancePage: FC = () => {
+const AppearancePage: FC = () => {
 	const queryClient = useQueryClient();
 	const updateAppearanceSettingsMutation = useMutation(
 		updateAppearanceSettings(queryClient),
@@ -29,7 +29,7 @@ export const AppearancePage: FC = () => {
 	return (
 		<>
 			<AppearanceForm
-				isUpdating={updateAppearanceSettingsMutation.isLoading}
+				isUpdating={updateAppearanceSettingsMutation.isPending}
 				error={updateAppearanceSettingsMutation.error}
 				initialValues={{
 					theme_preference: appearanceSettingsQuery.data.theme_preference,

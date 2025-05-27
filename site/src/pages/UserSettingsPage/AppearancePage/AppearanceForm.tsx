@@ -23,7 +23,7 @@ import {
 } from "theme/constants";
 import { Section } from "../Section";
 
-export interface AppearanceFormProps {
+interface AppearanceFormProps {
 	isUpdating?: boolean;
 	error?: unknown;
 	initialValues: UpdateUserAppearanceSettingsRequest;
@@ -132,7 +132,7 @@ export const AppearanceForm: FC<AppearanceFormProps> = ({
 	);
 };
 
-export function toTerminalFontName(value: string): TerminalFontName {
+function toTerminalFontName(value: string): TerminalFontName {
 	return TerminalFontNames.includes(value as TerminalFontName)
 		? (value as TerminalFontName)
 		: "";

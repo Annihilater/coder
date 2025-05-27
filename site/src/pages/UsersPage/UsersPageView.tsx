@@ -10,14 +10,13 @@ import {
 	SettingsHeaderDescription,
 	SettingsHeaderTitle,
 } from "components/SettingsHeader/SettingsHeader";
-import { Stack } from "components/Stack/Stack";
 import { UserPlusIcon } from "lucide-react";
 import type { ComponentProps, FC } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { UsersFilter } from "./UsersFilter";
 import { UsersTable } from "./UsersTable/UsersTable";
 
-export interface UsersPageViewProps {
+interface UsersPageViewProps {
 	users?: readonly TypesGen.User[];
 	roles?: TypesGen.AssignableRoles[];
 	isUpdatingUserRoles?: boolean;

@@ -23,7 +23,7 @@ import type { OneWayWebSocket } from "utils/OneWayWebSocket";
 
 type ItemStatus = "stale" | "valid" | "loading";
 
-export interface AgentMetadataViewProps {
+interface AgentMetadataViewProps {
 	metadata: WorkspaceAgentMetadata[];
 }
 
@@ -131,7 +131,7 @@ export const AgentMetadata: FC<AgentMetadataProps> = ({
 	return <AgentMetadataView metadata={activeMetadata} />;
 };
 
-export const AgentMetadataSkeleton: FC = () => {
+const AgentMetadataSkeleton: FC = () => {
 	return (
 		<Stack alignItems="baseline" direction="row" spacing={6}>
 			<div css={styles.metadata}>

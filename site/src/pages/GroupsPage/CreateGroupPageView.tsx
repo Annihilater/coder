@@ -30,7 +30,7 @@ const validationSchema = Yup.object({
 	name: nameValidator("Name"),
 });
 
-export type CreateGroupPageViewProps = {
+type CreateGroupPageViewProps = {
 	onSubmit: (data: CreateGroupRequest) => void;
 	error?: unknown;
 	isLoading: boolean;
@@ -114,4 +114,3 @@ export const CreateGroupPageView: FC<CreateGroupPageViewProps> = ({
 		</>
 	);
 };
-export default CreateGroupPageView;

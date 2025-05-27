@@ -24,6 +24,7 @@ import {
 } from "components/Select/Select";
 import { Slider } from "components/Slider/Slider";
 import { Switch } from "components/Switch/Switch";
+import { TagInput } from "components/TagInput/TagInput";
 import { Textarea } from "components/Textarea/Textarea";
 import {
 	Tooltip,
@@ -31,23 +32,29 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "components/Tooltip/Tooltip";
-import { Info, Settings, TriangleAlert } from "lucide-react";
-import { type FC, useId } from "react";
+import { useDebouncedValue } from "hooks/debounce";
+import { useEffectEvent } from "hooks/hookPolyfills";
+import { Info, LinkIcon, Settings, TriangleAlert } from "lucide-react";
+import { type FC, useEffect, useId, useRef, useState } from "react";
 import type { AutofillBuildParameter } from "utils/richParameters";
 import * as Yup from "yup";
 
-export interface DynamicParameterProps {
+interface DynamicParameterProps {
 	parameter: PreviewParameter;
+	value?: string;
 	onChange: (value: string) => void;
 	disabled?: boolean;
 	isPreset?: boolean;
+	autofill: boolean;
 }
 
 export const DynamicParameter: FC<DynamicParameterProps> = ({
 	parameter,
+	value,
 	onChange,
 	disabled,
 	isPreset,
+	autofill = false,
 }) => {
 	const id = useId();
 
@@ -56,18 +63,33 @@ export const DynamicParameter: FC<DynamicParameterProps> = ({
 			className="flex flex-col gap-2"
 			data-testid={`parameter-field-${parameter.name}`}
 		>
-			<ParameterLabel parameter={parameter} isPreset={isPreset} />
+			<ParameterLabel
+				id={id}
+				parameter={parameter}
+				isPreset={isPreset}
+				autofill={autofill}
+			/>
 			<div className="max-w-lg">
-				<ParameterField
-					parameter={parameter}
-					onChange={onChange}
-					disabled={disabled}
-					id={id}
-				/>
+				{parameter.form_type === "input" ||
+				parameter.form_type === "textarea" ? (
+					<DebouncedParameterField
+						id={id}
+						parameter={parameter}
+						value={value}
+						onChange={onChange}
+						disabled={disabled}
+					/>
+				) : (
+					<ParameterField
+						id={id}
+						parameter={parameter}
+						value={value}
+						onChange={onChange}
+						disabled={disabled}
+					/>
+				)}
 			</div>
-			{parameter.diagnostics.length > 0 && (
-				<ParameterDiagnostics diagnostics={parameter.diagnostics} />
-			)}
+			<ParameterDiagnostics diagnostics={parameter.diagnostics} />
 		</div>
 	);
 };
@@ -75,13 +97,22 @@ export const DynamicParameter: FC<DynamicParameterProps> = ({
 interface ParameterLabelProps {
 	parameter: PreviewParameter;
 	isPreset?: boolean;
+	autofill: boolean;
+	id: string;
 }
 
-const ParameterLabel: FC<ParameterLabelProps> = ({ parameter, isPreset }) => {
-	const hasDescription = parameter.description && parameter.description !== "";
+const ParameterLabel: FC<ParameterLabelProps> = ({
+	parameter,
+	isPreset,
+	autofill,
+	id,
+}) => {
 	const displayName = parameter.display_name
 		? parameter.display_name
 		: parameter.name;
+	const hasRequiredDiagnostic = parameter.diagnostics?.find(
+		(d) => d.extra?.code === "required",
+	);
 
 	return (
 		<div className="flex items-start gap-2">
@@ -94,15 +125,22 @@ const ParameterLabel: FC<ParameterLabelProps> = ({ parameter, isPreset }) => {
 			)}
 
 			<div className="flex flex-col w-full gap-1">
-				<Label className="flex gap-2 flex-wrap text-sm font-medium">
-					{displayName}
-
-					{parameter.mutable && (
+				<Label
+					htmlFor={id}
+					className="flex gap-2 flex-wrap text-sm font-medium"
+				>
+					<span className="flex">
+						{displayName}
+						{parameter.required && (
+							<span className="text-content-destructive">*</span>
+						)}
+					</span>
+					{!parameter.mutable && (
 						<TooltipProvider delayDuration={100}>
 							<Tooltip>
 								<TooltipTrigger asChild>
 									<span className="flex items-center">
-										<Badge size="sm" variant="warning">
+										<Badge size="sm" variant="warning" border="none">
 											<TriangleAlert />
 											Immutable
 										</Badge>
@@ -132,9 +170,42 @@ const ParameterLabel: FC<ParameterLabelProps> = ({ parameter, isPreset }) => {
 							</Tooltip>
 						</TooltipProvider>
 					)}
+					{autofill && (
+						<TooltipProvider delayDuration={100}>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<span className="flex items-center">
+										<Badge size="sm">
+											<LinkIcon />
+											URL Autofill
+										</Badge>
+									</span>
+								</TooltipTrigger>
+								<TooltipContent className="max-w-xs">
+									Autofilled from the URL
+								</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
+					)}
+					{hasRequiredDiagnostic && (
+						<TooltipProvider delayDuration={100}>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<span className="flex items-center">
+										<Badge size="sm" variant="destructive" border="none">
+											Required
+										</Badge>
+									</span>
+								</TooltipTrigger>
+								<TooltipContent className="max-w-xs">
+									{hasRequiredDiagnostic.summary || "Required parameter"}
+								</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
+					)}
 				</Label>
 
-				{hasDescription && (
+				{Boolean(parameter.description) && (
 					<div className="text-content-secondary">
 						<MemoizedMarkdown className="text-xs">
 							{parameter.description}
@@ -146,8 +217,118 @@ const ParameterLabel: FC<ParameterLabelProps> = ({ parameter, isPreset }) => {
 	);
 };
 
+interface DebouncedParameterFieldProps {
+	parameter: PreviewParameter;
+	value?: string;
+	onChange: (value: string) => void;
+	disabled?: boolean;
+	id: string;
+}
+
+const DebouncedParameterField: FC<DebouncedParameterFieldProps> = ({
+	parameter,
+	value,
+	onChange,
+	disabled,
+	id,
+}) => {
+	const [localValue, setLocalValue] = useState(
+		value !== undefined ? value : validValue(parameter.value),
+	);
+	const debouncedLocalValue = useDebouncedValue(localValue, 500);
+	const onChangeEvent = useEffectEvent(onChange);
+	// prevDebouncedValueRef is to prevent calling the onChangeEvent on the initial render
+	const prevDebouncedValueRef = useRef<string | undefined>();
+	const prevValueRef = useRef(value);
+
+	// This is necessary in the case of fields being set by preset parameters
+	useEffect(() => {
+		if (value !== undefined && value !== prevValueRef.current) {
+			setLocalValue(value);
+			prevValueRef.current = value;
+		}
+	}, [value]);
+
+	useEffect(() => {
+		if (prevDebouncedValueRef.current !== undefined) {
+			onChangeEvent(debouncedLocalValue);
+		}
+
+		prevDebouncedValueRef.current = debouncedLocalValue;
+	}, [debouncedLocalValue, onChangeEvent]);
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+	const resizeTextarea = useEffectEvent(() => {
+		if (textareaRef.current) {
+			const textarea = textareaRef.current;
+			textarea.style.height = `${textarea.scrollHeight}px`;
+		}
+	});
+
+	useEffect(() => {
+		resizeTextarea();
+	}, [resizeTextarea]);
+
+	switch (parameter.form_type) {
+		case "textarea": {
+			return (
+				<Textarea
+					ref={textareaRef}
+					id={id}
+					className="overflow-y-auto max-h-[500px]"
+					value={localValue}
+					onChange={(e) => {
+						const target = e.currentTarget;
+						target.style.height = "auto";
+						target.style.height = `${target.scrollHeight}px`;
+
+						setLocalValue(e.target.value);
+					}}
+					disabled={disabled}
+					placeholder={parameter.styling?.placeholder}
+					required={parameter.required}
+				/>
+			);
+		}
+
+		case "input": {
+			const inputType = parameter.type === "number" ? "number" : "text";
+			const inputProps: Record<string, unknown> = {};
+
+			if (parameter.type === "number") {
+				const validations = parameter.validations[0] || {};
+				const { validation_min, validation_max } = validations;
+
+				if (validation_min !== null) {
+					inputProps.min = validation_min;
+				}
+
+				if (validation_max !== null) {
+					inputProps.max = validation_max;
+				}
+			}
+
+			return (
+				<Input
+					id={id}
+					type={inputType}
+					value={localValue}
+					onChange={(e) => {
+						setLocalValue(e.target.value);
+					}}
+					disabled={disabled}
+					required={parameter.required}
+					placeholder={parameter.styling?.placeholder}
+					{...inputProps}
+				/>
+			);
+		}
+	}
+};
+
 interface ParameterFieldProps {
 	parameter: PreviewParameter;
+	value?: string;
 	onChange: (value: string) => void;
 	disabled?: boolean;
 	id: string;
@@ -155,27 +336,23 @@ interface ParameterFieldProps {
 
 const ParameterField: FC<ParameterFieldProps> = ({
 	parameter,
+	value,
 	onChange,
 	disabled,
 	id,
 }) => {
-	const value = validValue(parameter.value);
-	const defaultValue = validValue(parameter.default_value);
-
 	switch (parameter.form_type) {
 		case "dropdown":
 			return (
 				<Select
 					onValueChange={onChange}
-					defaultValue={defaultValue}
+					value={value}
 					disabled={disabled}
+					required={parameter.required}
 				>
-					<SelectTrigger>
+					<SelectTrigger id={id}>
 						<SelectValue
-							placeholder={
-								(parameter.styling as { placeholder?: string })?.placeholder ||
-								"Select option"
-							}
+							placeholder={parameter.styling?.placeholder || "Select option"}
 						/>
 					</SelectTrigger>
 					<SelectContent>
@@ -189,40 +366,48 @@ const ParameterField: FC<ParameterFieldProps> = ({
 			);
 
 		case "multi-select": {
+			const parsedValues = parseStringArrayValue(value ?? "");
+
+			if (parsedValues.error) {
+				return (
+					<p className="text-sm text-content-destructive">
+						{parsedValues.error}
+					</p>
+				);
+			}
+
 			// Map parameter options to MultiSelectCombobox options format
-			const comboboxOptions: Option[] = parameter.options.map((opt) => ({
+			const options: Option[] = parameter.options.map((opt) => ({
 				value: opt.value.value,
 				label: opt.name,
 				disable: false,
 			}));
 
-			const defaultOptions: Option[] = JSON.parse(defaultValue).map(
-				(val: string) => {
-					const option = parameter.options.find((o) => o.value.value === val);
-					return {
-						value: val,
-						label: option?.name || val,
-						disable: false,
-					};
-				},
+			const optionMap = new Map(
+				parameter.options.map((opt) => [opt.value.value, opt.name]),
 			);
+
+			const selectedOptions: Option[] = parsedValues.values.map((val) => {
+				return {
+					value: val,
+					label: optionMap.get(val) || val,
+					disable: false,
+				};
+			});
 
 			return (
 				<MultiSelectCombobox
 					inputProps={{
-						id: `${id}-${parameter.name}`,
+						id: id,
 					}}
-					options={comboboxOptions}
-					defaultOptions={defaultOptions}
+					options={options}
+					defaultOptions={selectedOptions}
 					onChange={(newValues) => {
 						const values = newValues.map((option) => option.value);
 						onChange(JSON.stringify(values));
 					}}
 					hidePlaceholderWhenSelected
-					placeholder={
-						(parameter.styling as { placeholder?: string })?.placeholder ||
-						"Select option"
-					}
+					placeholder={parameter.styling?.placeholder || "Select option"}
 					emptyIndicator={
 						<p className="text-center text-md text-content-primary">
 							No results found
@@ -233,9 +418,33 @@ const ParameterField: FC<ParameterFieldProps> = ({
 			);
 		}
 
+		case "tag-select": {
+			const parsedValues = parseStringArrayValue(value ?? "");
+
+			if (parsedValues.error) {
+				return (
+					<p className="text-sm text-content-destructive">
+						{parsedValues.error}
+					</p>
+				);
+			}
+
+			return (
+				<TagInput
+					id={id}
+					label={parameter.display_name || parameter.name}
+					values={parsedValues.values}
+					onChange={(values) => {
+						onChange(JSON.stringify(values));
+					}}
+				/>
+			);
+		}
+
 		case "switch":
 			return (
 				<Switch
+					id={id}
 					checked={value === "true"}
 					onCheckedChange={(checked) => {
 						onChange(checked ? "true" : "false");
@@ -246,11 +455,7 @@ const ParameterField: FC<ParameterFieldProps> = ({
 
 		case "radio":
 			return (
-				<RadioGroup
-					onValueChange={onChange}
-					disabled={disabled}
-					defaultValue={defaultValue}
-				>
+				<RadioGroup onValueChange={onChange} disabled={disabled} value={value}>
 					{parameter.options.map((option) => (
 						<div
 							key={option.value.value}
@@ -275,17 +480,14 @@ const ParameterField: FC<ParameterFieldProps> = ({
 			return (
 				<div className="flex items-center space-x-2">
 					<Checkbox
-						id={parameter.name}
+						id={id}
 						checked={value === "true"}
-						defaultChecked={defaultValue === "true"} // TODO: defaultChecked is always overridden by checked
 						onCheckedChange={(checked) => {
 							onChange(checked ? "true" : "false");
 						}}
 						disabled={disabled}
 					/>
-					<Label htmlFor={parameter.name}>
-						{parameter.display_name || parameter.name}
-					</Label>
+					<Label htmlFor={id}>{parameter.styling?.label}</Label>
 				</div>
 			);
 
@@ -293,15 +495,12 @@ const ParameterField: FC<ParameterFieldProps> = ({
 			return (
 				<div className="flex flex-row items-baseline gap-3">
 					<Slider
+						id={id}
 						className="mt-2"
-						defaultValue={[
-							Number(
-								parameter.default_value.valid
-									? parameter.default_value.value
-									: 0,
-							),
-						]}
-						onValueChange={([value]) => onChange(value.toString())}
+						value={[Number.isFinite(Number(value)) ? Number(value) : 0]}
+						onValueChange={([value]) => {
+							onChange(value.toString());
+						}}
 						min={parameter.validations[0]?.validation_min ?? 0}
 						max={parameter.validations[0]?.validation_max ?? 100}
 						disabled={disabled}
@@ -309,56 +508,32 @@ const ParameterField: FC<ParameterFieldProps> = ({
 					<span className="w-4 font-medium">{parameter.value.value}</span>
 				</div>
 			);
+	}
+};
 
-		case "textarea":
-			return (
-				<Textarea
-					className="max-w-2xl"
-					defaultValue={defaultValue}
-					onChange={(e) => onChange(e.target.value)}
-					onInput={(e) => {
-						const target = e.currentTarget;
-						target.style.maxHeight = "700px";
-						target.style.height = `${target.scrollHeight}px`;
-					}}
-					disabled={disabled}
-					placeholder={
-						(parameter.styling as { placeholder?: string })?.placeholder
-					}
-				/>
-			);
+type ParsedValues = {
+	values: string[];
+	error: string;
+};
 
-		case "input": {
-			const inputType = parameter.type === "number" ? "number" : "text";
-			const inputProps: Record<string, unknown> = {};
+const parseStringArrayValue = (value: string): ParsedValues => {
+	const parsedValues: ParsedValues = {
+		values: [],
+		error: "",
+	};
 
-			if (parameter.type === "number") {
-				const validations = parameter.validations[0] || {};
-				const { validation_min, validation_max } = validations;
-
-				if (validation_min !== null) {
-					inputProps.min = validation_min;
-				}
-
-				if (validation_max !== null) {
-					inputProps.max = validation_max;
-				}
+	if (value) {
+		try {
+			const parsed = JSON.parse(value);
+			if (Array.isArray(parsed)) {
+				parsedValues.values = parsed;
 			}
-
-			return (
-				<Input
-					type={inputType}
-					defaultValue={defaultValue}
-					onChange={(e) => onChange(e.target.value)}
-					disabled={disabled}
-					placeholder={
-						(parameter.styling as { placeholder?: string })?.placeholder
-					}
-					{...inputProps}
-				/>
-			);
+		} catch (e) {
+			parsedValues.error = `Error parsing parameter of type list(string), ${e}`;
 		}
 	}
+
+	return parsedValues;
 };
 
 interface OptionDisplayProps {
@@ -400,21 +575,26 @@ const ParameterDiagnostics: FC<ParameterDiagnosticsProps> = ({
 	diagnostics,
 }) => {
 	return (
-		<div className="flex flex-col gap-2">
-			{diagnostics.map((diagnostic, index) => (
-				<div
-					key={`parameter-diagnostic-${diagnostic.summary}-${index}`}
-					className={`text-xs px-1 ${
-						diagnostic.severity === "error"
-							? "text-content-destructive"
-							: "text-content-warning"
-					}`}
-				>
-					<p className="font-medium">{diagnostic.summary}</p>
-					{diagnostic.detail && <p className="m-0">{diagnostic.detail}</p>}
-				</div>
-			))}
-		</div>
+		<>
+			{diagnostics.map((diagnostic, index) => {
+				if (diagnostic.extra?.code === "required") {
+					return null;
+				}
+				return (
+					<div
+						key={`parameter-diagnostic-${diagnostic.summary}-${index}`}
+						className={`text-xs px-1 ${
+							diagnostic.severity === "error"
+								? "text-content-destructive"
+								: "text-content-warning"
+						}`}
+					>
+						<p className="font-medium">{diagnostic.summary}</p>
+						{diagnostic.detail && <p className="m-0">{diagnostic.detail}</p>}
+					</div>
+				);
+			})}
+		</>
 	);
 };
 
@@ -428,7 +608,7 @@ export const getInitialParameterValues = (
 		if (parameter.ephemeral) {
 			return {
 				name: parameter.name,
-				value: validValue(parameter.default_value),
+				value: validValue(parameter.value),
 			};
 		}
 
@@ -436,14 +616,12 @@ export const getInitialParameterValues = (
 			({ name }) => name === parameter.name,
 		);
 
+		const useAutofill =
+			autofillParam?.value && isValidParameterOption(parameter, autofillParam);
+
 		return {
 			name: parameter.name,
-			value:
-				autofillParam &&
-				isValidParameterOption(parameter, autofillParam) &&
-				autofillParam.value
-					? autofillParam.value
-					: validValue(parameter.default_value),
+			value: useAutofill ? autofillParam.value : validValue(parameter.value),
 		};
 	});
 };
@@ -456,6 +634,28 @@ const isValidParameterOption = (
 	previewParam: PreviewParameter,
 	buildParam: WorkspaceBuildParameter,
 ) => {
+	// multi-select is the only list(string) type with options
+	if (previewParam.form_type === "multi-select") {
+		let values: string[] = [];
+		try {
+			const parsed = JSON.parse(buildParam.value);
+			if (Array.isArray(parsed)) {
+				values = parsed;
+			}
+		} catch (e) {
+			return false;
+		}
+
+		if (previewParam.options.length > 0) {
+			const validValues = previewParam.options.map(
+				(option) => option.value.value,
+			);
+			return values.some((value) => validValues.includes(value));
+		}
+		return false;
+	}
+
+	// For parameters with options (dropdown, radio)
 	if (previewParam.options.length > 0) {
 		const validValues = previewParam.options.map(
 			(option) => option.value.value,
@@ -463,7 +663,8 @@ const isValidParameterOption = (
 		return validValues.includes(buildParam.value);
 	}
 
-	return false;
+	// For parameters without options (input,textarea,switch,checkbox,tag-select)
+	return true;
 };
 
 export const useValidationSchemaForDynamicParameters = (
